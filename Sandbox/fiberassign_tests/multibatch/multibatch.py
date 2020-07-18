@@ -27,7 +27,7 @@ def ra_dec_subset(data, ra_min=130, ra_max=190, dec_min=-5, dec_max=15):
 def accurate_assign_lya_qso(initial_mtl_file, pixweight_file):
     print("Finding targets that will be lya in the truth file")
     print('started reading targets')
-    targets = Table.read(initial_mtl_file)
+    targets = Table(fitsio.read(initial_mtl_file))
     print('finished reading targets')
 
     pixweight, header = fits.getdata(pixweight_file, 'PIXWEIGHTS', header=True)
@@ -218,7 +218,7 @@ def make_global_DR8_truth(global_DR8_mtl_file, output_path='./', program='dark')
         return global_DR8_truth_file
     
     print('Started reading file {}'.format(global_DR8_mtl_file))
-    targets = Table.read(global_DR8_mtl_file)
+    targets = Table(fitsio.read(global_DR8_mtl_file))
     print('Finished reading file {}'.format(global_DR8_mtl_file))
 
     # Find what targets will be associated to lya targets
@@ -277,8 +277,8 @@ def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start
     
     os.makedirs(output_path, exist_ok=True)
 
-    all_exposures = Table.read(surveysim_file, hdu=1)
-    all_tiledata = Table.read(surveysim_file, hdu=2)
+    all_exposures = Table(fitsio.read(surveysim_file, hdu=1))
+    all_tiledata = Table(fitsio.read(surveysim_file, hdu=2))
     all_tiles = desimodel.io.load_tiles()
 
     all_exposures['MJD_OFFSET'] = all_exposures['MJD'] - all_exposures['MJD'].min()
@@ -316,7 +316,9 @@ def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start
             print('batch_{:04d} {}'.format(batch_id, len(tiles_in_batch)), max_day)
             jj = np.isin(tiles['TILEID'], tiles_in_batch)
             batch_filename = os.path.join(output_path, 'batch_{:04d}_{}.fits'.format(batch_id, program))
-            tiles[jj].write(batch_filename, overwrite=True)
+            
+            if not os.path.exists(batch_filename): # Skip batch files already generated
+                tiles[jj].write(batch_filename, overwrite=True)
             batch_id += 1
             
         i_day += batch_cadence
@@ -332,7 +334,7 @@ def make_patch_file(data_filename, ra_min=130, ra_max=190, dec_min=-5, dec_max=1
     print('Creating file {}'.format(patch_filename))
     
     print('started reading targets')
-    data = Table.read(data_filename)
+    data = Table(fitsio.read(data_filename))
     print('finished reading targets')
     
     print('started patch selection')
@@ -360,7 +362,8 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
     batch_files.sort()
     
     # Read targets and truth
-    truth = Table.read(truth_file)
+    print("Reading truth file {}".format(truth_file))
+    truth = Table(fitsio.read(truth_file))
     
     #obsconditions
     obsconditions = None
@@ -383,7 +386,11 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
         zcat_filename = os.path.join(zcat_path, '{:04d}_zcat.fits'.format(i_batch))
         old_zcat_filename = os.path.join(zcat_path, '{:04d}_zcat.fits'.format(i_batch-1))
         
-        
+        # Added to resume interrupted runs
+        if os.path.exists(new_mtl_filename) and os.path.exists(zcat_filename):
+            print("Batch {} already done; skipping".format(i_batch))
+            continue
+            
         if i_batch == 0:
             shutil.copyfile(initial_mtl_file, mtl_filename)
         print(footprint)
@@ -397,13 +404,13 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
         fba_files = np.sort(glob.glob(os.path.join(fiberassign_path,"fba-*.fits")))
         
         # read the current mtl file
-        targets = Table.read(mtl_filename)
+        targets = Table(fitsio.read(mtl_filename))
 
         # Compute zcat
         if i_batch==0:
             zcat = desisim.quickcat.quickcat(fba_files, targets, truth, fassignhdu='FASSIGN', perfect=True)
         else:
-            old_zcat = Table.read(old_zcat_filename)
+            old_zcat = Table(fitsio.read(old_zcat_filename))
             zcat = desisim.quickcat.quickcat(fba_files, targets, truth, fassignhdu='FASSIGN', zcat=old_zcat, perfect=True)        
     
         zcat.write(zcat_filename, overwrite=True)
