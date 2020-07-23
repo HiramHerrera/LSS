@@ -272,14 +272,16 @@ def make_global_DR8_truth(global_DR8_mtl_file, output_path='./', program='dark')
     del truth
     return global_DR8_truth_file
     
-def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start_day=0, end_day=365, batch_cadence=7, 
+def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start_day=0, end_day=365, 
                         select_subset_sky=False, ra_min=130, ra_max=190, dec_min=-5, dec_max=15):
     
     os.makedirs(output_path, exist_ok=True)
 
-    all_exposures = Table(fitsio.read(surveysim_file, hdu=1))
-    all_tiledata = Table(fitsio.read(surveysim_file, hdu=2))
+    all_exposures = Table(fitsio.read(surveysim_file, ext='EXPOSURES'))
+    all_tiledata = Table(fitsio.read(surveysim_file, ext='TILEDATA'))
     all_tiles = desimodel.io.load_tiles()
+    avail_days = np.unique(all_tiledata['AVAIL'])
+    cadences = np.diff(avail_days)
 
     all_exposures['MJD_OFFSET'] = all_exposures['MJD'] - all_exposures['MJD'].min()
 
@@ -305,7 +307,12 @@ def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start
 
     i_day  = start_day 
     batch_id = 0
-    while (i_day + batch_cadence) < end_day:
+    
+    batch_cadence = cadences[0]
+    cadence_id = 0
+    f = open(os.path.join(output_path,'batch_cadences.txt'),'w')
+    f.write("# BATCH FILE | CADENCE | MIN DAY | MAX DAY \n")
+    while (i_day + batch_cadence) <= end_day:
         min_day  = i_day 
         max_day  = min_day + batch_cadence
         ii = (unique_dates>=min_day) & (unique_dates<max_day)
@@ -316,13 +323,15 @@ def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start
             print('batch_{:04d} {}'.format(batch_id, len(tiles_in_batch)), max_day)
             jj = np.isin(tiles['TILEID'], tiles_in_batch)
             batch_filename = os.path.join(output_path, 'batch_{:04d}_{}.fits'.format(batch_id, program))
-            
+            f.write("{:20s} {:>5} {:>5} {:>5} \n".format(batch_filename,batch_cadence,min_day,max_day))
             if not os.path.exists(batch_filename): # Skip batch files already generated
                 tiles[jj].write(batch_filename, overwrite=True)
             batch_id += 1
             
         i_day += batch_cadence
-
+        cadence_id += 1
+        batch_cadence = cadences[cadence_id]
+    f.close()
     return batch_id
  
 
@@ -411,8 +420,24 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
             zcat = desisim.quickcat.quickcat(fba_files, targets, truth, fassignhdu='FASSIGN', perfect=True)
         else:
             old_zcat = Table(fitsio.read(old_zcat_filename))
-            zcat = desisim.quickcat.quickcat(fba_files, targets, truth, fassignhdu='FASSIGN', zcat=old_zcat, perfect=True)        
-    
+            zcat = desisim.quickcat.quickcat(fba_files, targets, truth, fassignhdu='FASSIGN', zcat=old_zcat, perfect=True) 
+        
+        # Add ZWARN TO CONTAMINANTS
+        zcat.sort('TARGETID')
+        truth.sort('TARGETID')
+        targets.sort('TARGETID')
+        
+        ii = np.isin(targets['TARGETID'],zcat['TARGETID']) 
+        assert np.all(targets['TARGETID'][ii]==zcat['TARGETID'])
+        assert np.all(truth['TARGETID'][ii]==zcat['TARGETID'])
+        
+        templatetype = np.char.strip(truth['TEMPLATETYPE'][ii])
+        contam_LRG = (targets['DESI_TARGET'][ii]&desi_mask.LRG!=0) & (templatetype!=b'LRG')
+        contam_ELG = (targets['DESI_TARGET'][ii]&desi_mask.ELG!=0) & (templatetype!=b'ELG')
+        contam_QSO = (targets['DESI_TARGET'][ii]&desi_mask.QSO!=0) & (templatetype!=b'QSO')
+        
+        zcat['ZWARN'][contam_QSO|contam_ELG|contam_LRG]=2**8        
+        
         zcat.write(zcat_filename, overwrite=True)
         mtl = desitarget.mtl.make_mtl(targets, obsconditions, zcat=zcat)
         mtl.write(new_mtl_filename, overwrite=True)
