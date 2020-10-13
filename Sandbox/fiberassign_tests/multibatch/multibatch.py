@@ -197,9 +197,9 @@ def make_global_DR8_mtl(output_path='./', program='dark'):
         print('reading file', i, len(target_files), len(tmp_data))
     
     if program=='dark':
-        full_mtl = desitarget.mtl.make_mtl(target_data, 'DARK|GRAY')
+        full_mtl = desitarget.mtl.make_mtl(target_data, 'DARK|GRAY',trimcols=True)
     if program=='bright':
-        full_mtl = desitarget.mtl.make_mtl(target_data, 'BRIGHT')
+        full_mtl = desitarget.mtl.make_mtl(target_data, 'BRIGHT',trimcols=True)
 
     print('Started writing file {}'.format(global_DR8_mtl_file))
     full_mtl.write(global_DR8_mtl_file, overwrite=True)
@@ -461,7 +461,7 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
         zcat['ZWARN'][contam_QSO|contam_ELG|contam_LRG]=2**8        
         
         zcat.write(zcat_filename, overwrite=True)
-        mtl = desitarget.mtl.make_mtl(targets, obsconditions, zcat=zcat)
+        mtl = desitarget.mtl.make_mtl(targets, obsconditions, zcat=zcat,trimcols=True)
         
         del targets
         del zcat
