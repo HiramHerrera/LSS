@@ -272,16 +272,14 @@ def make_global_DR8_truth(global_DR8_mtl_file, output_path='./', program='dark')
     del truth
     return global_DR8_truth_file
     
-def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start_day=0, end_day=365, 
+def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start_day=0, end_day=365, batch_cadence=None,
                         select_subset_sky=False, ra_min=130, ra_max=190, dec_min=-5, dec_max=15):
     
     os.makedirs(output_path, exist_ok=True)
-
+    
     all_exposures = Table(fitsio.read(surveysim_file, ext='EXPOSURES'))
     all_tiledata = Table(fitsio.read(surveysim_file, ext='TILEDATA'))
     all_tiles = desimodel.io.load_tiles()
-    avail_days = np.unique(all_tiledata['AVAIL'])
-    cadences = np.diff(avail_days)
 
     all_exposures['MJD_OFFSET'] = all_exposures['MJD'] - all_exposures['MJD'].min()
 
@@ -308,8 +306,14 @@ def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start
     i_day  = start_day 
     batch_id = 0
     
-    batch_cadence = cadences[0]
-    cadence_id = 0
+    fixed_cadence=True
+    if batch_cadence is None:
+        avail_days = np.unique(all_tiledata['AVAIL'])
+        cadences = np.diff(avail_days)
+        batch_cadence = cadences[0]
+        cadence_id = 0
+        fixed_cadence=False
+        
     f = open(os.path.join(output_path,'batch_cadences.txt'),'w')
     f.write("# BATCH FILE | CADENCE | MIN DAY | MAX DAY \n")
     while (i_day + batch_cadence) <= end_day:
@@ -329,8 +333,10 @@ def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start
             batch_id += 1
             
         i_day += batch_cadence
-        cadence_id += 1
-        batch_cadence = cadences[cadence_id]
+        
+        if not fixed_cadence:
+            cadence_id += 1
+            batch_cadence = cadences[cadence_id]
     f.close()
     return batch_id
  
