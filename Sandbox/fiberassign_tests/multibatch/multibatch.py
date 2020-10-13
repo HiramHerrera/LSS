@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import glob
 import os
 import fitsio
+import gc
 import desimodel.io
 import desitarget.mtl
 import desisim.quickcat
@@ -273,8 +274,7 @@ def make_global_DR8_truth(global_DR8_mtl_file, output_path='./', program='dark')
     return global_DR8_truth_file
     
 def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start_day=0, end_day=365, batch_cadence=None,
-                        select_subset_sky=False, ra_min=130, ra_max=190, dec_min=-5, dec_max=15):
-    
+                        select_subset_sky=False, ra_min=130, ra_max=190, dec_min=-5, dec_max=15,use_last_date=False):   
     os.makedirs(output_path, exist_ok=True)
     
     all_exposures = Table(fitsio.read(surveysim_file, ext='EXPOSURES'))
@@ -302,14 +302,27 @@ def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start
     a, b = np.unique(exposures['TILEID'], return_index=True)
     unique_tiles = exposures['TILEID'][np.sort(b)]
     unique_dates = exposures['MJD_OFFSET'][np.sort(b)]
+    
+    if use_last_date:
+        for tile in unique_tiles:
+            wt = all_exposures['TILEID'] == tile
+            md = np.max(all_exposures['MJD_OFFSET'][wt])
+            wt = unique_tiles == tile
+            od = unique_dates[wt]
+            unique_dates[wt] = md
+            print(tile,md,od)
+        
 
     i_day  = start_day 
-    batch_id = 0
+    batch_id = int(start_day/batch_cadence)
+    if start_day/batch_cadence - batch_id != 0:
+    print('mismatch between starting day and initial batch id')
+    print(start_day/batch_cadence,batch_id)
     
     fixed_cadence=True
     if batch_cadence is None:
         avail_days = np.unique(all_tiledata['AVAIL'])
-        cadences = np.diff(avail_days)
+        cadences = np.diff(avail_days[availdays>=start_day])
         batch_cadence = cadences[0]
         cadence_id = 0
         fixed_cadence=False
@@ -365,7 +378,7 @@ def make_patch_file(data_filename, ra_min=130, ra_max=190, dec_min=-5, dec_max=1
     return patch_filename 
 
     
-def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch_path="./", program='dark',sbatch=0):
+def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch_path="./", program='dark',sbatch=0,mxbatch=100):
     os.makedirs(output_path, exist_ok=True)
     targets_path='{}/targets'.format(output_path)
     zcat_path = '{}/zcat'.format(output_path)
@@ -379,6 +392,7 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
     # Read targets and truth
     print("Reading truth file {}".format(truth_file))
     truth = Table(fitsio.read(truth_file))
+    print('done readying truth file')
     
     #obsconditions
     obsconditions = None
@@ -388,6 +402,8 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
         obsconditions = 'BRIGHT'
     
     n_batch = len(batch_files)
+    if mxbatch < n_batch:
+        n_batch = mxbatch
     for i_batch in range(sbatch,n_batch):
         print()
         print("Batch {}".format(i_batch))
@@ -427,7 +443,7 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
         else:
             old_zcat = Table(fitsio.read(old_zcat_filename))
             zcat = desisim.quickcat.quickcat(fba_files, targets, truth, fassignhdu='FASSIGN', zcat=old_zcat, perfect=True) 
-        
+        del old_zcat     
         # Add ZWARN TO CONTAMINANTS
         zcat.sort('TARGETID')
         truth.sort('TARGETID')
@@ -446,9 +462,17 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
         
         zcat.write(zcat_filename, overwrite=True)
         mtl = desitarget.mtl.make_mtl(targets, obsconditions, zcat=zcat)
-        mtl.write(new_mtl_filename, overwrite=True)
         
-        del mtl
         del targets
         del zcat
+        #gc.collect()
+        print('writing mtl ')
+
+        mtl.write(new_mtl_filename, overwrite=True)
+        print('wrote mtl')
+        del mtl
+        gc.collect()
+        
+    
+    return True    
         

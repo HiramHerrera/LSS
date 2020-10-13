@@ -4,9 +4,8 @@ sys.path.append(os.path.abspath('multibatch'))
 import multibatch as mb
 
 target_path='targets'
-#surveysim_file="/global/cfs/cdirs/desi/users/schlafly/surveysim/exposures_nopass7.fits"
-surveysim_file="/global/cfs/cdirs/desi/users/schlafly/surveysimlibrary/exposures_monthly-delay0.fits"
-bdir = '/global/cscratch1/sd/ajross/fiberassigntest/exposures_monthly-delay0/'
+surveysim_file="/global/cfs/cdirs/desi/users/schlafly/surveysim/exposures_nopass7.fits"
+bdir = ''
 ra_min=130
 ra_max=190
 dec_min=-5
@@ -48,8 +47,8 @@ if make_tiles:
     
 
     # batches for the first year of the survey (all the footprint is available) with different cadences
-    n = mb.prepare_tile_batches(surveysim_file, output_path=foot, program='dark', start_day=0, end_day=365, batch_cadence=batch_cadence) 
-    n = mb.prepare_tile_batches(surveysim_file, output_path=foot, program='bright', start_day=0, end_day=365, batch_cadence=batch_cadence) 
+    n = mb.prepare_tile_batches(surveysim_file, output_path=foot, program='dark', start_day=365, end_day=730, batch_cadence=batch_cadence) 
+    #n = mb.prepare_tile_batches(surveysim_file, output_path=foot, program='bright', start_day=365, end_day=730, batch_cadence=batch_cadence) 
 
     # batches for the whole duration of the survey, restricted to a small region on the sky.
     #n = mb.prepare_tile_batches(surveysim_file, output_path='footprint_patch_month', program='dark', 
@@ -63,6 +62,6 @@ run_fa = True
 if run_fa:
     sbatch = int(sys.argv[1])
     mxbatch = int(sys.argv[2])
-    for i in range(sbatch,mxbatch+1):
-        mb.run_strategy(global_DR8_mtl_file_dark,  global_DR8_truth_file_dark , global_DR8_sky_file,
-             output_path=darkout, batch_path=foot, program="dark",sbatch=i,mxbatch=i+1)
+    #for i in range(sbatch,mxbatch+1):
+    mb.run_strategy(global_DR8_mtl_file_dark,  global_DR8_truth_file_dark , global_DR8_sky_file,
+        output_path=darkout, batch_path=foot, program="dark",sbatch=sbatch,mxbatch=mxbatch)#,sbatch=i,mxbatch=i+1)

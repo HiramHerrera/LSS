@@ -16,7 +16,7 @@ from numpy.lib.recfunctions import append_fields
 
 import matplotlib.pyplot as plt
 
-from astropy.table import Table,join,unique
+from astropy.table import Table,join,unique,vstack
 
 from scipy.spatial import KDTree
 
@@ -256,6 +256,213 @@ def mkmtl_assignavail(footprint ,type='ELG',science_input='mtl_science.fits', fb
     plt.ylim(7,13)
     plt.show()
 
+def getall_fassign(type,indir,nmonths=70,cadence=28):
+    fba_files0 = glob.glob(os.path.join(indir+'0000/',"fba-*.fits"))
+    fah = fitsio.read_header(fba_files0[0])
+    tile = fah['TILEID']
+    fass = fitsio.read(fba_files0[0],ext='FASSIGN')
+    
+    if type == 'SKY':
+        wsk = ((fass['FA_TARGET'] & 2**37) > 0) | ((fass['FA_TARGET'] & 2**36) > 0) | ((fass['FA_TARGET'] & 2**32) > 0)
+    fass = fass[wsk]
+    tl = np.ones(len(fass),dtype=int)*tile
+    #fass = append_fields(fass,'TILE',tl)
+
+    #fass['TILE'] = tile
+    for i in range(1,len(fba_files0)):
+        fah = fitsio.read_header(fba_files0[i])
+        tile = fah['TILEID']
+        fai = fitsio.read(fba_files0[i],ext='FASSIGN')
+        if type == 'SKY':
+            wsk = ((fai['FA_TARGET'] & 2**37) > 0) | ((fai['FA_TARGET'] & 2**36) > 0) | ((fai['FA_TARGET'] & 2**32) > 0)
+        fai = fai[wsk]
+        #print(len(fai))
+        tli = np.ones(len(fai),dtype=int)*tile
+        #fai = append_fields(fai,'TILE',tl)
+        #fai['TILE'] = tile
+        #fass = vstack([fass,fai],metadata_conflicts='silent')
+        #print(fass.dtype)
+        #print(fai.dtype)
+        fass = np.hstack((fass,fai))
+        tl = np.hstack((tl,tli))
+    fb = np.zeros(len(fass))
+    fm = np.ones((len(fass)),dtype=int)*cadence
+    #fass['BATCH'] = 0
+    #fass['MAXSURVEYMJD'] = cadence
+    
+    #fass = append_fields(fass, 'BATCH', fb, usemask=False) 
+    #fass = append_fields(fass, 'MAXSURVEYMJD', fm, usemask=False) 
+    for j in range(1,nmonths):
+        print('working on batch '+str(j))
+        m = str.zfill(str(j),4)
+        fba_filesj = glob.glob(indir+m+"/fba-*.fits")
+        for i in range(0,len(fba_filesj)):
+            fah = fitsio.read_header(fba_filesj[i])
+            tile = fah['TILEID']
+            fai = fitsio.read(fba_filesj[i],ext='FASSIGN')
+            if type == 'SKY':
+                wsk = ((fai['FA_TARGET'] & 2**37) > 0) | ((fai['FA_TARGET'] & 2**36) > 0) | ((fai['FA_TARGET'] & 2**32) > 0)
+            fai = fai[wsk]
+            #print(len(fai))
+            #fai['TILE'] = tile
+            tli = np.ones(len(fai),dtype=int)*tile
+            tl = np.hstack((tl,tli))
+            #fai = append_fields(fai,'TILE',tl)
+            fbi = np.ones(len(fai))*j
+            fb = np.hstack((fb,fbi))
+            #fai = append_fields(fai,'BATCH',fb)
+            fmi = np.ones((len(fai)),dtype=int)*cadence*(j+1)
+            fm = np.hstack((fm,fmi))
+            #fai = append_fields(fai,'MAXSURVEYMJD',fm)
+
+            #fass = vstack([fass,fai],metadata_conflicts='silent')
+            fass = np.hstack((fass,fai))
+
+        #fass['BATCH'] = j
+        #fass['MAXSURVEYMJD'] = cadence*(j+1) 
+
+        print('after batch '+str(j)+ ' there are '+str(len(fass))+' '+type+' assignments')  
+    fass = append_fields(fass,'TILE',tl, usemask=False)
+    fass = append_fields(fass,'BATCH',fb, usemask=False)
+    fass = append_fields(fass,'MAXSURVEYMJD',fm, usemask=False)
+    print(np.unique(fass['BATCH']))
+    #fass.write(indir+'all_assigned_'+type+'.fits',format='fits', overwrite=True)
+    outf = indir+'all_assigned_'+type+'.fits'
+    if os.path.isfile(outf):
+        os.remove(outf)
+
+    with fitsio.FITS(outf, "rw") as fd:
+        fd.write(fass)
+
+    return True
+        
+           
+        
+    
+
+#just get all of the excess sky counts for the fiberassign files in a directory
+def sky_counts(indir,nskym=400,nscix = 4500):
+    fba_files = glob.glob(os.path.join(indir,"fba-*.fits"))
+    next = 0
+    ni = 0
+    for fl in fba_files:
+        fass = fitsio.read(fl,ext='FASSIGN')
+        wv = (fass["TARGETID"] >= 0 ) & ((fass['DEVICE_TYPE'] == b'POS') | (fass['DEVICE_TYPE'] == 'POS'))
+        fass = fass[wv]
+        if len(fass) > 4800:
+            wsk = ((fass['FA_TARGET'] & 2**37) > 0) | ((fass['FA_TARGET'] & 2**36) > 0) | ((fass['FA_TARGET'] & 2**32) > 0) | ((fass['FA_TARGET'] & 2**61) > 0)
+            wsk &=  ((fass['FA_TARGET'] & 2**2) == 0) & ((fass['FA_TARGET'] & 2**1) == 0) & ((fass['FA_TARGET'] & 2**0) == 0)
+            ws = ((fass['FA_TARGET'] & 2**2) > 0) | ((fass['FA_TARGET'] & 2**1) > 0) | ((fass['FA_TARGET'] & 2**0) > 0) | ((fass['FA_TARGET'] & 2**60) > 0) | ((fass['FA_TARGET'] & 2**61) > 0)
+            nskyi = len(fass[wsk])
+            nscii = len(fass[ws])
+            nexti = nskyi-nskym
+            nextis = nscix-nscii
+            #print(fl,nexti,nextis,len(fass))
+            next += nexti
+        else:
+            ni += 1
+            print('not enough assignments',fl,len(fass)) 
+    print('total number of extra fibers '+str(next)+ ' across '+str(len(fba_files))+' tiles')
+    return next,len(fba_files)-ni
+
+def science_counts(indir):
+    fba_files = glob.glob(os.path.join(indir,"fba-*.fits"))
+    n0 = 0
+    n1 = 0
+    n2 = 0
+   
+    for fl in fba_files:
+        fass = fitsio.read(fl,ext='FASSIGN')
+        wv = (fass["TARGETID"] >= 0 ) & ((fass['DEVICE_TYPE'] == b'POS') | (fass['DEVICE_TYPE'] == 'POS'))
+        fass = fass[wv]
+        w0 = ((fass['FA_TARGET'] & 2**0) > 0) 
+        w1 = ((fass['FA_TARGET'] & 2**1) > 0) 
+        w2 = ((fass['FA_TARGET'] & 2**2) > 0)
+        n0 += len(fass[w0])
+        n1 += len(fass[w1])
+        n2 += len(fass[w2])
+    print('total number of science assignments '+str(n0+n1+n2)+ ' across '+str(len(fba_files))+' tiles')
+    return n0,n1,n2
+
+def getall_science_counts(indir,nmonths=13,splot=True,title='no pass with 28 day cadence'):
+    nt0 = 0
+    nt1 = 0
+    nt2 = 0
+    tl = []
+    nl0 = []
+    nl1 = []
+    nl2 = []
+    for i in range(0,nmonths): 
+        m = str.zfill(str(i),4)
+        n0,n1,n2 = science_counts(indir+m)
+        nt0 += n0
+        nt1 += n1
+        nt2 += n2
+        nl0.append(nt0)
+        nl1.append(nt1)
+        nl2.append(nt2)
+        tl.append((i+1)/13.)   
+    tl = np.array(tl)
+    nl1 = np.array(nl1)
+    nl2 = np.array(nl2)
+    nl0 = np.array(nl0)
+    if splot:
+        plt.plot(tl,nl1,'b-',label='ELGS')
+        plt.plot(tl,nl0,'r-',label='LRGs')
+        plt.plot(tl,nl2,'-',color='purple',label='QSOs')
+        plt.plot(tl,tl*10.e6,'k-',label='10e6/year')
+        plt.plot(tl,tl*3.e6,'k--',label='3e6/year')
+        plt.plot(tl,tl*5.e6,'k:',label='5e6/year')
+        #plt.ticklabel_format(style='sci', scilimits=(3,3))
+        plt.xlabel('time (years)')
+        plt.ylabel('cumulative number of targets')
+        #plt.yscale('log')
+        plt.title(title)
+        plt.legend()
+        plt.show()
+        plt.plot(tl,nl1/nt1,'b-',label='ELGS')
+        plt.plot(tl,nl0/nt0,'r-',label='LRGs')
+        plt.plot(tl,nl2/nt2,'-',color='purple',label='QSOs')
+        plt.plot(tl,tl*.24,'k--',label='0.24/year')
+        plt.ticklabel_format(style='sci', scilimits=(3,3))
+        plt.xlabel('time (years)')
+        plt.ylabel('fraction completed')
+        #plt.yscale('log')
+        plt.title(title)
+        plt.legend()
+        plt.show()
+
+    return True
+
+
+def getall_sky_counts(indir,nmonths=13,splot=True,title='no pass with 28 day cadence'):
+    ne = 0
+    nt = 0
+    nsl = []
+    tl = []
+    nel = []
+    for i in range(0,nmonths): 
+        m = str.zfill(str(i),4)
+        nf,nti = sky_counts(indir+m)
+        ne += nf
+        nel.append(ne)
+        nt += nti
+        nsl.append(nf/(5000*nti))    
+        tl.append((i+1)/13.)   
+    print(ne,nt)
+    if splot:
+        plt.plot(tl,nel,'k-')
+        #plt.ticklabel_format(style='sci', scilimits=(3,3))
+        plt.xlabel('time (years)')
+        plt.ylabel('cumulative number of spare fibers')
+        plt.title(title)
+        plt.show()
+        plt.plot(tl,nsl,'k-')
+        plt.xlabel('time (years)')
+        plt.ylabel('fraction of spare fibers in previous 28 days')
+        plt.title(title)
+        plt.show()
+    return nsl
 
 # Function to compute the assigned, available, and considered targets for a set of tiles
 

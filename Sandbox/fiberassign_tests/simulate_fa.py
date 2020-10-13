@@ -14,7 +14,7 @@ ramax = 40
 decmin = 0
 decmax = 40
 
-fraclya = 0.2 #fraction of quasar targets that we will want to observe 4 times
+fraclya = 1 #fraction of quasar targets that we will want to observe 4 times
 
 
 
@@ -38,6 +38,9 @@ if fracgray == 0.4:
 if fracgray == 0.3:
     mode = 'ELG3070'
     
+if fracgray == 0.25:
+    mode = 'ELG2575'      
+    
 if fracgray == 0.2:
     mode = 'ELG2080'    
 
@@ -46,7 +49,7 @@ if fracgray == 0.1:
     
 passes = [0,1,2,3,4]
 
-graylast = True
+graylast = False
 if graylast:
     passes = [1,2,3,4,0]
     if fracgray == 0:
@@ -55,7 +58,10 @@ if graylast:
 grayind = False
 if grayind == True:
     if fracgray == 0:
-        mode = 'grayindfid'         
+        mode = 'grayindfid' 
+
+if fraclya == 1:
+    mode = 'lya1'                
 
 print('mode is '+mode)
 
