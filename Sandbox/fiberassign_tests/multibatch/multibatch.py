@@ -314,19 +314,20 @@ def prepare_tile_batches(surveysim_file, output_path='./', program='dark', start
         
 
     i_day  = start_day 
-    batch_id = int(start_day/batch_cadence)
-    if start_day/batch_cadence - batch_id != 0:
-    print('mismatch between starting day and initial batch id')
-    print(start_day/batch_cadence,batch_id)
     
     fixed_cadence=True
     if batch_cadence is None:
         avail_days = np.unique(all_tiledata['AVAIL'])
-        cadences = np.diff(avail_days[availdays>=start_day])
+        cadences = np.diff(avail_days[avail_days>=start_day])
         batch_cadence = cadences[0]
         cadence_id = 0
         fixed_cadence=False
-        
+
+    batch_id = int(start_day/batch_cadence)
+    if start_day/batch_cadence - batch_id != 0:
+        print('mismatch between starting day and initial batch id')
+        print(start_day/batch_cadence,batch_id)    
+    
     f = open(os.path.join(output_path,'batch_cadences.txt'),'w')
     f.write("# BATCH FILE | CADENCE | MIN DAY | MAX DAY \n")
     while (i_day + batch_cadence) <= end_day:
@@ -443,7 +444,7 @@ def run_strategy(initial_mtl_file, truth_file, sky_file, output_path="./", batch
         else:
             old_zcat = Table(fitsio.read(old_zcat_filename))
             zcat = desisim.quickcat.quickcat(fba_files, targets, truth, fassignhdu='FASSIGN', zcat=old_zcat, perfect=True) 
-        del old_zcat     
+            del old_zcat     
         # Add ZWARN TO CONTAMINANTS
         zcat.sort('TARGETID')
         truth.sort('TARGETID')
